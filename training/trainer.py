@@ -1,4 +1,3 @@
-# training/trainer.py
 import torch
 
 class Trainer:

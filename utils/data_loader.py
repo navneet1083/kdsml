@@ -1,4 +1,3 @@
-# utils/data_loader.py
 from datasets import load_dataset
 from transformers import BertTokenizer
 import torch

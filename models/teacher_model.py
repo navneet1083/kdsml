@@ -1,4 +1,3 @@
-# models/teacher_model.py
 import torch
 from transformers import BertModel, BertTokenizer
 
