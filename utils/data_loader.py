@@ -2,6 +2,7 @@
 from datasets import load_dataset
 from transformers import BertTokenizer
 import torch
+import os
 
 
 class DataLoader:
@@ -10,7 +11,7 @@ class DataLoader:
         self.tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
         self.max_length = max_length
 
-    def preprocess_wikitext(self, examples):
+    def _preprocess_wikitext(self, examples):
         return self.tokenizer(
             examples['text'],
             padding='max_length',
@@ -18,6 +19,28 @@ class DataLoader:
             max_length=self.max_length,
             return_tensors='pt'
         )
+
+    def preprocess_wikitext(self, examples):
+        tokenized = self.tokenizer(
+            examples['text'],
+            padding='max_length',
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+        input_ids = tokenized['input_ids']
+        attention_mask = tokenized['attention_mask']
+
+        # Create labels by shifting input_ids by one position
+        labels = input_ids.clone()
+        labels[:, :-1] = input_ids[:, 1:]  # Shift left
+        labels[:, -1] = self.tokenizer.pad_token_id  # Pad the last token
+
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels
+        }
 
     def preprocess_squad(self, examples):
         # Tokenize question and context
@@ -57,12 +80,12 @@ class DataLoader:
         if self.dataset_name == 'wikitext':
             # Load WikiText-103 dataset
             dataset = load_dataset('wikitext', 'wikitext-103-v1')
-            dataset = dataset[split].map(self.preprocess_wikitext, batched=True)
-            dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
+            dataset = dataset[split].map(self.preprocess_wikitext, batched=True, num_proc=os.cpu_count())
+            dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
         elif self.dataset_name == 'squad':
             # Load SQuAD dataset
             dataset = load_dataset('squad', split=split)
-            dataset = dataset.map(self.preprocess_squad, batched=True)
+            dataset = dataset.map(self.preprocess_squad, batched=True, num_proc=os.cpu_count())
             dataset.set_format(type='torch',
                                columns=['input_ids', 'attention_mask', 'start_positions', 'end_positions'])
         else:

@@ -10,4 +10,7 @@ class TeacherModel(torch.nn.Module):
 
     def forward(self, input_ids, attention_mask):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        return outputs.last_hidden_state
+        return {
+            'last_hidden_state': outputs.last_hidden_state,  # Shape: (batch_size, sequence_length, hidden_size=768)
+            'pooler_output': outputs.pooler_output
+        }
