@@ -26,7 +26,7 @@ class Trainer:
 
         return loss.item()
 
-    def train_step(self, input_ids, attention_mask, labels):
+    def single_gpu_train_step(self, input_ids, attention_mask, labels):
         self.student_model.train()
         self.teacher_model.eval()
 
@@ -57,3 +57,26 @@ class Trainer:
         # print("Labels Shape:", labels.shape)
 
         return loss.item()
+
+    def train_step(self, input_ids, attention_mask, labels):
+        self.student_model.train()
+        self.teacher_model.eval()
+
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        labels = labels.to(self.device)
+
+        with torch.no_grad():
+            teacher_outputs = self.teacher_model(input_ids=input_ids, attention_mask=attention_mask)
+
+        teacher_hidden_states = teacher_outputs['last_hidden_state']
+
+        # Forward pass through the student model
+        student_outputs = self.student_model(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Compute loss using the teacher's hidden states
+        loss = self.loss_fn(student_outputs, teacher_hidden_states, labels)
+
+        # Instead of calling backward and optimizer step here,
+        # simply return the loss tensor for the caller to handle.
+        return loss
