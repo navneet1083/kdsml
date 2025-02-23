@@ -76,7 +76,7 @@ def main():
     base_train_loader = data_loader_obj.get_dataloader(split='train', batch_size=256)
     train_dataset = base_train_loader.dataset
     train_sampler = DistributedSampler(train_dataset)
-    train_loader = TorchDataLoader(train_dataset, batch_size=32, sampler=train_sampler)
+    train_loader = TorchDataLoader(train_dataset, batch_size=256, sampler=train_sampler)
 
     val_loader = DataLoader(dataset_name='wikitext').get_dataloader(split='validation', batch_size=256)
     # eval_loader = DataLoader(dataset_name='squad').get_dataloader(split='validation', batch_size=256)
