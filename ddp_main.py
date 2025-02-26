@@ -81,7 +81,7 @@ def main():
     val_loader = DataLoader(dataset_name='wikitext').get_dataloader(split='validation', batch_size=256)
     # eval_loader = DataLoader(dataset_name='squad').get_dataloader(split='validation', batch_size=256)
 
-    num_epochs = 10
+    num_epochs = 25
     eval_interval = 100  # mini-evaluation every 100 batches
 
     # Main training loop

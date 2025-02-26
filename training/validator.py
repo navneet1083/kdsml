@@ -1,11 +1,13 @@
+# training/validator.py
 import torch
 
 class Validator:
-    def __init__(self, student_model, teacher_model, loss_fn, device):
+    def __init__(self, student_model, teacher_model, loss_fn, device, pad_token_id=0):
         self.student_model = student_model
         self.teacher_model = teacher_model
         self.loss_fn = loss_fn
         self.device = device
+        self.pad_token_id = pad_token_id
 
     def ensure_tensor(self, x, key_name):
         if isinstance(x, torch.Tensor):
@@ -20,7 +22,7 @@ class Validator:
         self.teacher_model.eval()
         total_loss = 0.0
         total_correct = 0
-        total_examples = 0
+        total_tokens = 0
         batch_count = 0
 
         with torch.no_grad():
@@ -34,27 +36,30 @@ class Validator:
                 attention_mask = self.ensure_tensor(batch['attention_mask'], "attention_mask").to(self.device)
                 labels = self.ensure_tensor(batch['labels'], "labels").to(self.device)
 
-                # Get teacher hidden states from the teacher model
+                # Obtain teacher hidden states and student logits
                 teacher_outputs = self.teacher_model(input_ids, attention_mask=attention_mask)
-                teacher_hidden_states = teacher_outputs['last_hidden_state']  # Expected shape: (batch, seq, 1024)
+                teacher_hidden_states = teacher_outputs['last_hidden_state']
+                student_logits = self.student_model(input_ids, attention_mask=attention_mask)
 
-                # Get student outputs
-                student_outputs = self.student_model(input_ids, attention_mask=attention_mask)  # Shape: (batch, seq, vocab_size)
-
-                # Compute loss using the teacher hidden states
-                loss = self.loss_fn(student_outputs, teacher_hidden_states, labels)
+                # Compute the distillation loss
+                loss = self.loss_fn(student_logits, teacher_hidden_states, labels)
                 total_loss += loss.item()
 
-                # (Optional) Compute accuracy if applicable:
-                # predictions = student_outputs.argmax(dim=-1)
-                # correct = (predictions == labels).sum().item()
-                # total_correct += correct
-                # total_examples += labels.numel()
+                # Compute token-level accuracy ignoring pad tokens.
+                # Predictions: shape [batch, seq]
+                predictions = student_logits.argmax(dim=-1)
+                # Create a mask for tokens that are not pad tokens
+                mask = labels != self.pad_token_id
+                # Count correct predictions only where mask is True.
+                correct = ((predictions == labels) & mask).sum().item()
+                total = mask.sum().item()
+
+                total_correct += correct
+                total_tokens += total
 
                 if max_batches is not None and batch_count >= max_batches:
                     break
 
         avg_loss = total_loss / batch_count if batch_count > 0 else 0.0
-        # Here accuracy is set to 0.0 if not computed
-        accuracy = (total_correct / total_examples * 100) if total_examples > 0 else 0.0
+        accuracy = (total_correct / total_tokens * 100) if total_tokens > 0 else 0.0
         return avg_loss, accuracy
