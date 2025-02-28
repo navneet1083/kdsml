@@ -34,6 +34,9 @@ def main():
     dist.init_process_group(backend="nccl", init_method="env://")
     local_rank = int(os.environ["LOCAL_RANK"])
     device = f"cuda:{local_rank}"
+    print('--'*20)
+    print(f'Local Rank: {local_rank} :: device : {device}')
+    print('--'*20)
 
     # Create teacher and student models and move them to device
     teacher_model = TeacherModel().to(device)
@@ -44,7 +47,8 @@ def main():
     loss_fn = KnowledgeDistillationLoss(hidden_size=1024).to(device)
 
     # Optimizer (only updating student model parameters)
-    optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-4)
+    # optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-1)
 
     # Mixed precision scaler
     scaler = GradScaler()
@@ -81,7 +85,7 @@ def main():
     val_loader = DataLoader(dataset_name='wikitext').get_dataloader(split='validation', batch_size=256)
     # eval_loader = DataLoader(dataset_name='squad').get_dataloader(split='validation', batch_size=256)
 
-    num_epochs = 25
+    num_epochs = 50
     eval_interval = 100  # mini-evaluation every 100 batches
 
     # Main training loop
