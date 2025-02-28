@@ -1,4 +1,6 @@
 from models.student_model import StudentModel
+from fine_tuning.finetunestudentmodel import FineTuneStudentModel
+from fine_tuning.finetunetrainer import FineTuneTrainer
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
