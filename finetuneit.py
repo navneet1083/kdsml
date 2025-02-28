@@ -1,8 +1,22 @@
 from models.student_model import StudentModel
 from fine_tuning.finetunestudentmodel import FineTuneStudentModel
 from fine_tuning.finetunetrainer import FineTuneTrainer
+import torch
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+from datasets import load_dataset
+
+from transformers import logging as hf_logging
+hf_logging.set_verbosity_error()
+
+import os
+from tqdm import tqdm
+
 
 def main():
+    student_model_name = "checkpoint.pth"
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load GLUE SST-2 dataset using Hugging Face Datasets
@@ -15,10 +29,9 @@ def main():
     tokenized_dataset = raw_dataset.map(preprocess_function, batched=True)
     tokenized_dataset = tokenized_dataset.remove_columns(["sentence", "idx"])
     tokenized_dataset.set_format("torch")
-    train_loader = DataLoader(tokenized_dataset["train"], batch_size=256, shuffle=True)
-    val_loader = DataLoader(tokenized_dataset["validation"], batch_size=256)
-    test_loader = DataLoader(tokenized_dataset["test"],
-                             batch_size=256)  # test set has no labels; for demonstration we'll focus on validation
+    train_loader = DataLoader(tokenized_dataset["train"], batch_size=512, shuffle=True)
+    val_loader = DataLoader(tokenized_dataset["validation"], batch_size=512)
+    test_loader = DataLoader(tokenized_dataset["test"], batch_size=512)
 
     num_labels = 2  # SST-2 is binary classification
 
@@ -27,8 +40,8 @@ def main():
     # -------------------------------
     student_base = StudentModel().to(device)
     # Load pre-training weights from "student_model.pth"
-    student_checkpoint = torch.load("student_model.pth", map_location=device)
-    student_base.load_state_dict(student_checkpoint)
+    student_checkpoint = torch.load(student_model_name, map_location=device)
+    student_base.load_state_dict(student_checkpoint['student_model_state_dict'])
 
     # Wrap the student model for fine-tuning
     fine_tune_student = FineTuneStudentModel(student_base, num_labels=num_labels).to(device)
@@ -75,7 +88,7 @@ def main():
         teacher_val_accuracies = ckpt.get("val_accuracies", [])
         print(f"Resuming teacher fine-tuning from epoch {start_epoch}.")
 
-    num_epochs = 5  # Adjust as needed for fine-tuning; you can increase if the model hasn't converged.
+    num_epochs = 5  # Adjust as needed.
     patience = 3
     best_student_val_loss = float("inf")
     best_teacher_val_loss = float("inf")
@@ -95,7 +108,10 @@ def main():
         student_batches = 0
         teacher_batches = 0
 
-        for batch in train_loader:
+        pbar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
+                    unit="batch")
+
+        for i, batch in pbar:
             s_loss, s_acc = student_trainer.train_step(batch)
             t_loss, t_acc = teacher_trainer.train_step(batch)
             total_student_loss += s_loss
@@ -104,6 +120,10 @@ def main():
             total_teacher_acc += t_acc
             student_batches += 1
             teacher_batches += 1
+            pbar.set_postfix({
+                "Student Loss": f"{s_loss:.4f}",
+                "Teacher Loss": f"{t_loss:.4f}"
+            })
 
         avg_student_train_loss = total_student_loss / student_batches
         avg_teacher_train_loss = total_teacher_loss / teacher_batches
@@ -140,45 +160,43 @@ def main():
         else:
             teacher_patience_counter += 1
 
-            # Save checkpoints
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": fine_tune_student.state_dict(),
-                "optimizer_state_dict": student_optimizer.state_dict(),
-                "train_losses": student_train_losses,
-                "val_losses": student_val_losses,
-                "val_accuracies": student_val_accuracies,
-            }, student_ckpt_path)
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": teacher_model.state_dict(),
-                "optimizer_state_dict": teacher_optimizer.state_dict(),
-                "train_losses": teacher_train_losses,
-                "val_losses": teacher_val_losses,
-                "val_accuracies": teacher_val_accuracies,
-            }, teacher_ckpt_path)
-            print(f"Checkpoint saved for epoch {epoch + 1}.")
+        # Save checkpoints
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": fine_tune_student.state_dict(),
+            "optimizer_state_dict": student_optimizer.state_dict(),
+            "train_losses": student_train_losses,
+            "val_losses": student_val_losses,
+            "val_accuracies": student_val_accuracies,
+        }, student_ckpt_path)
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": teacher_model.state_dict(),
+            "optimizer_state_dict": teacher_optimizer.state_dict(),
+            "train_losses": teacher_train_losses,
+            "val_losses": teacher_val_losses,
+            "val_accuracies": teacher_val_accuracies,
+        }, teacher_ckpt_path)
+        print(f"Checkpoint saved for epoch {epoch + 1}.")
 
-            if student_patience_counter >= patience:
-                print("Early stopping student fine-tuning.")
-                break
-            if teacher_patience_counter >= patience:
-                print("Early stopping teacher fine-tuning.")
-                break
+        if student_patience_counter >= patience:
+            print("Early stopping student fine-tuning.")
+            break
+        if teacher_patience_counter >= patience:
+            print("Early stopping teacher fine-tuning.")
+            break
 
     # -------------------------------
-    # 4f. Evaluation on Validation/Test Set
+    # 4f. Final Evaluation and Saving
     # -------------------------------
     student_final_loss, student_final_acc = student_trainer.validate(val_loader)
     teacher_final_loss, teacher_final_acc = teacher_trainer.validate(val_loader)
     print(f"Final Student: Val Loss: {student_final_loss:.4f}, Val Acc: {student_final_acc:.4f}")
     print(f"Final Teacher: Val Loss: {teacher_final_loss:.4f}, Val Acc: {teacher_final_acc:.4f}")
 
-    # Save final models
     torch.save(fine_tune_student.state_dict(), "fine_tuned_student_model.pth")
     torch.save(teacher_model.state_dict(), "fine_tuned_teacher_model.pth")
 
-    # Save training plots for both models
     save_training_plot(student_train_losses, student_val_losses, student_val_accuracies, "student", epoch + 1)
     save_training_plot(teacher_train_losses, teacher_val_losses, teacher_val_accuracies, "teacher", epoch + 1)
 
@@ -190,19 +208,19 @@ def save_training_plot(train_losses, val_losses, val_accuracies, model_name, fin
 
     # Plot Loss
     plt.subplot(1, 2, 1)
-    plt.plot(epochs, train_losses, label="Train Loss", marker="o")
-    plt.plot(epochs, val_losses, label="Validation Loss", marker="o")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title(f"{model_name} Loss over Epochs")
+    plt.plot(epochs, train_losses, label='Train Loss', marker='o')
+    plt.plot(epochs, val_losses, label='Validation Loss', marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title(f'{model_name} Loss over Epochs')
     plt.legend()
 
     # Plot Accuracy
     plt.subplot(1, 2, 2)
-    plt.plot(epochs, val_accuracies, label="Validation Accuracy", marker="o", color="green")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.title(f"{model_name} Accuracy over Epochs")
+    plt.plot(epochs, val_accuracies, label='Validation Accuracy', marker='o', color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title(f'{model_name} Accuracy over Epochs')
     plt.legend()
 
     plt.tight_layout()

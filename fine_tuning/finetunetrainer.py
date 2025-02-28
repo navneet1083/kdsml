@@ -1,3 +1,6 @@
+import torch.nn as nn
+import torch
+
 
 class FineTuneTrainer:
     def __init__(self, model, optimizer, device):
@@ -12,7 +15,12 @@ class FineTuneTrainer:
         attention_mask = batch["attention_mask"].to(self.device)
         labels = batch["label"].to(self.device)
         self.optimizer.zero_grad()
-        logits = self.model(input_ids, attention_mask)
+        outputs = self.model(input_ids, attention_mask)
+        # If output is a SequenceClassifierOutput, extract logits.
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+        else:
+            logits = outputs
         loss = self.criterion(logits, labels)
         loss.backward()
         self.optimizer.step()
@@ -30,7 +38,11 @@ class FineTuneTrainer:
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["label"].to(self.device)
-                logits = self.model(input_ids, attention_mask)
+                outputs = self.model(input_ids, attention_mask)
+                if hasattr(outputs, "logits"):
+                    logits = outputs.logits
+                else:
+                    logits = outputs
                 loss = self.criterion(logits, labels)
                 preds = torch.argmax(logits, dim=-1)
                 acc = (preds == labels).float().mean().item()
