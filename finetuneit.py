@@ -13,6 +13,8 @@ hf_logging.set_verbosity_error()
 import os
 from tqdm import tqdm
 
+import datetime
+
 
 def main():
     student_model_name = "checkpoint.pth"
@@ -54,8 +56,8 @@ def main():
     # -------------------------------
     # 4c. Create Optimizers and Trainers
     # -------------------------------
-    student_optimizer = AdamW(fine_tune_student.parameters(), lr=2e-5)
-    teacher_optimizer = AdamW(teacher_model.parameters(), lr=2e-5)
+    student_optimizer = AdamW(fine_tune_student.parameters(), lr=2e-6)
+    teacher_optimizer = AdamW(teacher_model.parameters(), lr=2e-6)
     student_trainer = FineTuneTrainer(fine_tune_student, student_optimizer, device)
     teacher_trainer = FineTuneTrainer(teacher_model, teacher_optimizer, device)
 
@@ -88,8 +90,8 @@ def main():
         teacher_val_accuracies = ckpt.get("val_accuracies", [])
         print(f"Resuming teacher fine-tuning from epoch {start_epoch}.")
 
-    num_epochs = 5  # Adjust as needed.
-    patience = 3
+    num_epochs = 35  # Adjust as needed.
+    patience = 10
     best_student_val_loss = float("inf")
     best_teacher_val_loss = float("inf")
     student_patience_counter = 0
