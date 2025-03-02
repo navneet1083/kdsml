@@ -3,10 +3,13 @@ import torch.nn as nn
 
 class FineTuneStudentQA(nn.Module):
     def __init__(self, student_model):
+        """
+        This wrapper uses the pre-trained student model's embedding and transformer layers
+        and adds a QA head (a linear layer) to produce start and end logits.
+        """
         super(FineTuneStudentQA, self).__init__()
         self.student_model = student_model
         self.hidden_size = self.student_model.embedding.embedding_dim
-        # QA head: output 2 logits per token (start and end)
         self.qa_outputs = nn.Linear(self.hidden_size, 2)
 
     def forward(self, input_ids, attention_mask=None):
