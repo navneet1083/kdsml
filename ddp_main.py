@@ -48,7 +48,7 @@ def main():
 
     # Optimizer (only updating student model parameters)
     # optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-4)
-    optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-1)
+    optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-4)
 
     # Mixed precision scaler
     scaler = GradScaler()
