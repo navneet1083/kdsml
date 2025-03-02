@@ -10,6 +10,9 @@ from datasets import load_dataset
 import json
 import os
 from tqdm import tqdm
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import datetime
 from transformers import logging as hf_logging
@@ -92,13 +95,13 @@ def main():
     student_checkpoint = torch.load(student_model, map_location=device)
     student_base.load_state_dict(student_checkpoint['student_model_state_dict'])
     fine_tune_student = FineTuneStudentQA(student_base).to(device)
-    fine_tune_student = DDP(fine_tune_student, device_ids=[local_rank], output_device=local_rank)
+    fine_tune_student = DDP(fine_tune_student, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
     # -------------------------------
     # 4b. Load Teacher Model for QA Fine-Tuning (Benchmark)
     # -------------------------------
     teacher_model = BertForQuestionAnswering.from_pretrained("bert-base-uncased").to(device)
-    teacher_model = DDP(teacher_model, device_ids=[local_rank], output_device=local_rank)
+    teacher_model = DDP(teacher_model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
     # -------------------------------
     # 4c. Create Optimizers and Trainers for QA
