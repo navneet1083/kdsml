@@ -62,15 +62,31 @@ def main():
         }
 
     tokenized_dataset = tokenized_dataset.map(add_dummy_positions, batched=True)
+    # tokenized_dataset.set_format(
+    #     type="torch",
+    #     columns=["input_ids", "attention_mask", "offset_mapping", "context", "answers", "start_positions",
+    #              "end_positions"]
+    # )
     tokenized_dataset.set_format(
         type="torch",
-        columns=["input_ids", "attention_mask", "offset_mapping", "context", "answers", "start_positions",
-                 "end_positions"]
+        columns=["input_ids", "attention_mask", "start_positions", "end_positions"],
+        output_all_columns=True
     )
 
+    def custom_collate_fn(batch):
+        from torch.utils.data._utils.collate import default_collate
+        # Specify keys that should be collated into tensors.
+        fixed_keys = ["input_ids", "attention_mask", "start_positions", "end_positions"]
+        collated = {key: default_collate([b[key] for b in batch]) for key in fixed_keys}
+        # For all other keys, just collect them as lists.
+        other_keys = set(batch[0].keys()) - set(fixed_keys)
+        for key in other_keys:
+            collated[key] = [b[key] for b in batch]
+        return collated
 
-    train_loader = DataLoader(tokenized_dataset["train"], batch_size=128, shuffle=True)
-    val_loader = DataLoader(tokenized_dataset["validation"], batch_size=128)
+
+    train_loader = DataLoader(tokenized_dataset["train"], batch_size=128, collate_fn=custom_collate_fn, shuffle=True)
+    val_loader = DataLoader(tokenized_dataset["validation"], batch_size=128, collate_fn=custom_collate_fn)
 
     num_epochs = 10  # Adjust as needed for fine-tuning
     patience = 2  # Early stopping patience based on F1 improvement

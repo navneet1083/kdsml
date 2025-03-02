@@ -32,13 +32,15 @@ class QA_Trainer:
         self.optimizer.step()
         return loss.item()
 
-    def validate(self, dataloader):
+    def validate(self, dataloader, max_batches=None):
         self.model.eval()
         total_loss = 0.0
         total_f1 = 0.0
         count = 0
+        batch_count = 0
         with torch.no_grad():
             for batch in dataloader:
+                batch_count += 1
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 start_positions = batch["start_positions"].to(self.device)
@@ -53,27 +55,39 @@ class QA_Trainer:
                 loss_end = self.criterion(end_logits, end_positions)
                 loss = (loss_start + loss_end) / 2.0
                 total_loss += loss.item()
-                # Compute F1 score for each example.
                 pred_start = start_logits.argmax(dim=-1)
                 pred_end = end_logits.argmax(dim=-1)
                 for i in range(len(input_ids)):
-                    offsets = batch["offset_mapping"][i]  # List of [start, end] pairs
-                    context = batch["context"][i]  # String
-                    gt_answers = batch["answers"][i]["text"]  # List of ground truth answers
-                    s_idx = pred_start[i].item()
-                    e_idx = pred_end[i].item()
-                    if s_idx > e_idx:
-                        predicted_answer = ""
+                    offsets = batch["offset_mapping"][i]  # list of [start, end] pairs
+                    context = batch["context"][i]  # string
+                    # Safely determine ground truth answers:
+                    if isinstance(batch["answers"], dict):
+                        # Expecting a dict with key "text" that is a list
+                        gt_list = batch["answers"].get("text", [])
+                        gt_answers = gt_list[i] if i < len(gt_list) else []
+                    elif isinstance(batch["answers"], list):
+                        gt_answers = batch["answers"][i].get("text", []) if i < len(batch["answers"]) else []
                     else:
-                        start_char = offsets[s_idx][0]
-                        end_char = offsets[e_idx][1]
-                        predicted_answer = context[start_char:end_char]
-                    f1 = 0.0
-                    for gt in gt_answers:
-                        f1 = max(f1, compute_f1(predicted_answer, gt))
+                        gt_answers = []
+                    if not gt_answers:
+                        f1 = 0.0
+                    else:
+                        s_idx = pred_start[i].item()
+                        e_idx = pred_end[i].item()
+                        if s_idx > e_idx:
+                            predicted_answer = ""
+                        else:
+                            start_char = offsets[s_idx][0]
+                            end_char = offsets[e_idx][1]
+                            predicted_answer = context[start_char:end_char]
+                        f1 = 0.0
+                        for gt in gt_answers:
+                            f1 = max(f1, compute_f1(predicted_answer, gt))
                     total_f1 += f1
                     count += 1
-        avg_loss = total_loss / len(dataloader) if len(dataloader) > 0 else 0.0
+                if max_batches is not None and batch_count >= max_batches:
+                    break
+        avg_loss = total_loss / batch_count if batch_count > 0 else 0.0
         avg_f1 = total_f1 / count if count > 0 else 0.0
         return avg_loss, avg_f1
 
