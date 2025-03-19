@@ -130,7 +130,7 @@ If you use or extend this work, please cite our project as follows:
 ```bibtex
 @inproceedings{kdslm,
   title={Knowledge Distillation for Transformer Models: Pre-training and Fine-tuning},
-  author={Navneet and Dr. Pramod Murthy},
+  author={Navneet, Dr. Pramod Murthy and Madhusudhanan B.},
   publisher = {GitHub},
   journal = {GitHub repository},
   year={2025},
